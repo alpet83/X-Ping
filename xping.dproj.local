@@ -1,0 +1,9 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<BorlandProject>
+	<Transactions>
+    <Transaction>1899.12.30 00:00:00.000.dfm,P:\Trade\ping\StatChart.dfm=P:\Trade\ping\Unit1.dfm</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.pas,P:\Trade\ping\MainForm.pas=P:\Trade\ping\Unit1.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.pas,P:\Trade\ping\StatChart.pas=P:\Trade\ping\Unit1.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.dfm,P:\Trade\ping\MainForm.dfm=P:\Trade\ping\Unit1.dfm</Transaction>
+  </Transactions>
+</BorlandProject>
