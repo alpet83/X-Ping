@@ -16,7 +16,7 @@ uses
   SysUtils,
   SyncObjs,
   ShellAPi,
-  Forms,
+  Forms, ModuleMgr,
   MainForm in 'MainForm.pas',
   ping,
   StatChart in 'StatChart.pas' {ChartForm};
@@ -61,10 +61,21 @@ begin
   Application.CreateForm(TPingForm, PingForm);
   Application.CreateForm(TChartForm, ChartForm);
   Application.Run;
+  ODS('[~T]. #DBG: app finalization preparing...');
+  try
+   ChartForm.Close;
+   FreeAndNil (ChartForm);
+  except
+   on E: Exception do
+      OnExceptLog('main', E);
+  end;
+  ODS('[~T]. #DBG: app finalization start...');
  finally
   sc_share.Free;
   SetConsoleTextAttribute (hCon, $07);
  end;
+
  Sleep (500);
  WriteLn;
+ ExitProcess(0);
 end.

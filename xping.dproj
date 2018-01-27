@@ -91,7 +91,7 @@
         <VerInfo_Build>0</VerInfo_Build>
         <DCC_DebugInformation>2</DCC_DebugInformation>
         <DCC_UnitSearchPath>..\lib\;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
-        <DCC_Define>madExcept;$(DCC_Define)</DCC_Define>
+        <DCC_Define>madExcept;LeakChecking;$(DCC_Define)</DCC_Define>
         <DCC_MapFile>3</DCC_MapFile>
         <VerInfo_Keys>CompanyName=;FileDescription=;FileVersion=1.0.0.0;InternalName=;LegalCopyright=;LegalTrademarks=;OriginalFilename=;ProductName=;ProductVersion=1.0.0.0;Comments=</VerInfo_Keys>
         <VerInfo_Locale>1033</VerInfo_Locale>

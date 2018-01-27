@@ -87,7 +87,7 @@ function  PerformPing(InetAddress : string) : boolean;
 implementation
 
 uses
-  WinSock;
+  WinSock, ModuleMgr;
 
 function Fetch(var AInput: string;
                       const ADelim: string = ' ';
@@ -172,18 +172,44 @@ begin
   TranslateStringToTInAddr(InetAddress, InAddr);
   DW := IcmpSendEcho (h_icmp, InAddr, nil, 0, nil, @rep, 128, 2500);
   Result := (DW <> 0);
-
 end;
 
-initialization
- try
-  ODS('[~T]. #DBG(ping.pas): trying WSAStartup...');
-  WSAStartup($101, GInitData);
- except
-  on E: Exception do
-   OnExceptLog ('initialization/WSAStartup', E);
- end;
+{ TMiscModuleDesc }
+function OnModuleRqs (md: TModuleDescriptor; rqs, flags: DWORD): Boolean;
+var
+   i: Integer;
+begin
+ result := FALSE;
+ case rqs of
+      MRQ_INITIALIZE:  // ==================================================================================================== //
+          begin
+           result := (MST_INITIALIZED <> md.Status);
+           if not result then exit;
+           ODS('[~T]. #DBG(ping.pas): trying WSAStartup...');
+           WSAStartup($101, GInitData);
+           exit;
+          end;
+      MRQ_FINALIZE: // ==================================================================================================== //
+          begin
+           result := (MST_FINALIZED <> md.Status);
+           if not result then exit;
+           try
+            WSACleanup;
+           except
+            on E: Exception do
+               OnExceptLog('WSACleanup', E);
+           end;
+          end;
+ end; // case
+end; // OnModuleRqs
 
+var
+  lMDesc: TModuleDescriptor = nil;
+
+initialization
+ lMDesc := RegModule ('Ping', 'Misc', OnModuleRqs);
+ InitializeModule ('Ping');
 finalization
- WSACleanup;
+ FinalizeModule('Ping');
+ lMDesc := nil;
 end.

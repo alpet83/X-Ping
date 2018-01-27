@@ -52,7 +52,7 @@ type
      ping_now: Boolean;
      ping_cnt: Integer;
      ping_sent: TDateTime;
-     ping_timeout: DWORD;
+  ping_timeout: DWORD;
         FStatus: String;
     FNameServer: String;
 
@@ -102,6 +102,7 @@ type
    { methods }
    function     AddHost (const addr: String): TICMPHost;
    procedure    PingAll ();
+   function     InProgress: Integer;
   end; // TPingDestination
 
   TPingThread = class(TWorkerThread)
@@ -144,6 +145,8 @@ type
     procedure WMEraseBackground (var msg: TMessage); message WM_ERASEBKGND;
   private
     dest_list: TStrMap;
+    act_hosts: TStrMap;
+
     mouse_pt: TPoint;
     sel_host: TICMPHost;
     ctx_host: TICMPHost;
@@ -151,7 +154,8 @@ type
 
     procedure PaintResults;
     procedure AddDest(const dstl, ns: String);
-    function MouseOnHost: TICMPHost;
+    function  MouseOnHost: TICMPHost;
+    function  ActiveRequests: Integer;
     { Private declarations }
   public
     { Public declarations }
@@ -165,6 +169,7 @@ type
 var
   PingForm: TPingForm;
   g_ping_timeout: Integer = 1500;
+       g_exiting: Integer = 0;
 
 
 implementation
@@ -186,7 +191,7 @@ var
 begin
  fini := TIniFile.Create ( FindConfigFile ('xping.conf') );
  try
-  g_ping_timeout := fini.ReadInteger ('config', 'PingTimeout', 1500);
+  g_ping_timeout := fini.ReadInteger ('config', 'PingTimeout', 2500);
   for n := 0 to 9 do
    begin
     k := 'destination' + IntToStr(n);
@@ -234,9 +239,6 @@ begin
 
  ShellExecuteExW ( @einf );
 
-
-
-
  if FileExists (ftmp) then
   begin
 
@@ -268,10 +270,6 @@ begin
 
    DeleteFile (ftmp);
   end;
-
-
-
-
 end;
 
 procedure TPingForm.miSaveSSClick(Sender: TObject);
@@ -301,24 +299,53 @@ begin
     HideConsole ();
 end;
 
+function TPingForm.ActiveRequests: Integer;
+var
+    i: Integer;
+  pth: TPingThread;
+begin
+ result := 0;
+ for i := 0 to dest_list.Count - 1 do
+  begin
+   pth := TPingThread ( dest_list.Objects [i] );
+   Inc (result, pth.PingDest.InProgress);
+  end;
+end;
+
 procedure TPingForm.FormCloseQuery(Sender: TObject; var CanClose: Boolean);
 var
    n: Integer;
+ cnt: Integer;
  pth: TPingThread;
 begin
- ODS('[~T]. #DBG: FormCloseQuery processing...');
+ chxDrawStat.checked := FALSE;
+ tmrUpdate.Enabled := FALSE;
+
  try
+   ChartForm.Hide;
    Hide;
+   g_exiting := 1;
+   Sleep (g_ping_timeout);
+
+   for n := 1 to 10 do
+     begin
+      Inc (g_exiting);
+      cnt := ActiveRequests;
+      if (cnt > 0) then
+       begin
+        wprintf ('[~T]. #DBG: stopping %d threads, stage %d, active_rqs %d ', [dest_list.Count, n, cnt]);
+        Sleep (g_ping_timeout div 2);
+        Application.ProcessMessages;
+      end;
+     end;
+
    for n := dest_list.Count - 1 downto 0 do
     begin
      pth := TPingThread ( dest_list.Objects [n] );
-     pth.StopThread;
+     pth.WaitStop(10500);
     end;
-   for n := dest_list.Count - 1 downto 0 do
-    begin
-     pth := TPingThread ( dest_list.Objects [n] );
-     pth.WaitStop();
-    end;
+   ODS('[~T]. #DBG: all threads stopped');
+   ChartForm.Close;
  except
   on E: Exception do
      PrintError(' Exception catched ' + E.Message);
@@ -329,7 +356,9 @@ end;
 procedure TPingForm.FormCreate(Sender: TObject);
 begin
  dest_list := TStrMap.Create (self);
+ act_hosts := TStrMap.Create(self);
  g_timer := TVirtualTimer.Create;
+
 
  PaintResults;
  LoadConfig;
@@ -345,17 +374,26 @@ var
      n: Integer;
    pth: TPingThread;
 begin
+ tmrUpdate.Enabled := FALSE;
+
+ ODS('[~T]. #DBG: releasing threads');
  for n := dest_list.Count - 1 downto 0 do
   try
    pth := TPingThread ( dest_list.Objects [n] );
-   if not pth.Terminated then
-      pth.StopThread;
+   if not pth.Terminated then pth.StopThread;
+   // pth.FreeOnTerminate := TRUE;
    pth.WaitStop;
    pth.Free;
+
    dest_list.Delete (n);
   except
+   on E: Exception do
+     OnExceptLog('FormDestroy', E);
   end;
- dest_list.Free;
+
+ FreeAndNil (dest_list);
+ FreeAndNil (act_hosts);
+ ODS('[~T]. #DBG: FormDestroy exit');
 end;
 
 procedure TPingForm.FormResize(Sender: TObject);
@@ -484,7 +522,7 @@ procedure TPingForm.PaintResults;
 var
    wc: TCanvas;
    w, h: Integer;
-   cx, x, y: Integer;
+   i, cx, x, y: Integer;
 
    frame: TRect;
    cell_w, max_col: Integer;
@@ -498,6 +536,7 @@ var
    dst: TPingDestination;
    hst: TICMPHost;
    pst: TPingStat;
+     s: String;
 begin
  wc := imgResults.Canvas;
  wc.Brush.Color := clSilver;
@@ -551,9 +590,9 @@ begin
       hst := dst.HostObjs [n_host];
       if (hst = nil) then continue;
       pst := hst.PingStat;
-
       if (pst = nil) then continue;
 
+      s := hst.Name;
 
 
       if pst.Count = 0 then
@@ -561,6 +600,19 @@ begin
       else
          stability := 100.0 * pst.Reached / pst.Count;
 
+      if (stability = 100) and (act_hosts.IndexOfName(s) < 0) then
+         begin
+          act_hosts.Add(s + '=' + FormatDateTime('dd.mm-hh:nn:ss', Now));
+          wprintf('[~T].~C0B #PING:~C07 host registered [%35s] ', [s]);
+         end;
+
+      i := act_hosts.IndexOfName(s);
+
+      if (stability < 90) and (i >= 0) then
+         begin
+          act_hosts.Delete(i);
+          wprintf('[~T].~C0C #PING:~C07 host lost       [%35s]', [s]);
+         end;
 
       SetRect (hst.rhit, x, y - 1, x + cell_w, y + 11);
 
@@ -749,20 +801,29 @@ end;
 
 destructor TICMPHost.Destroy;
 begin
- pt.Free;
- PingStat.Free;
- IcmpCloseHandle(h_icmp);
+ try
+  pt.Free;
+  PingStat.Free;
+  IcmpCloseHandle(h_icmp);
+ except
+  on E: Exception do
+     OnExceptLog('TICMPHost.Destroy', E);
+ end;
  inherited;
 end;
 
 procedure PingApcRoutine(ApcContext, IoStatusBlock: Pointer; Reserved: DWORD); stdcall;
 var
    hst: TICMPHost;
+   cnt: Integer;
 begin
  // dst := ApcContext;
  // if (dst = nil) then exit;
+
  hst := ApcContext;
  if hst = nil then exit;
+ if g_exiting >= 5 then
+    wprintf('[~T]. #DBG: last ICMP-reply received for host [%s] ', [hst.Name]);
 
  if IoStatusBlock = nil then exit;
 
@@ -776,64 +837,74 @@ var
    res, err: DWORD;
    fail: Boolean;
    elps: Double;
-   s: String;
+   live: Boolean;
+     et: DWORD;
+      s: String;
 
 begin
  result := FALSE;
  elps := pt.Elapsed (1);
- if ping_now and ( elps > 3 * ping_timeout ) then
+
+ live := ( Now -  PingStat.last_reached ) < ( 5 * DT_ONE_MINUTE ); // этот хост был активен в течении 5 минут
+
+ et := ping_timeout * 2;
+
+ if live then
+    et := ping_timeout + 500;
+
+ if ping_now and ( elps >= et ) then
   begin
    ping_now := FALSE;
    PingStat.Add ( - elps, g_timer.GetTime );
-   ODS('~C0C[~T]. #WARN: Hard timeout for peer~C0F ' + Name + ' =~C0D' + ftow(elps, '%.1f~C0F ms') + '~C07');
+   if live then
+      ODS('~C0C[~T]. #WARN: reply timeout for peer~C0F ' + Name + ' = ~C0D' + ftow(elps, '%.1f~C0F ms') + '~C07');
   end;
-
 
  Inc (ping_cnt);
 
  if FStatus = GET_IP_ERROR then Resolve;
  if FStatus = GET_IP_ERROR then exit;
 
-
- if ( ping_cnt and 15 = 1 ) or ( PingStat.last_reached > 0 ) then else exit;
+ // try every 4 attempt if host was never accessible
+ if ( ping_cnt and 3 = 1 ) or ( live ) then else exit;
 
  if ( h_icmp = INVALID_HANDLE_VALUE ) or ( ping_now ) then Exit;
 
+  if (g_exiting > 0) then exit;
 
  // ODS('[~T]. #DBG: ping host ~C0A' + Name + '~C07');
-
-
  s := Format('Ping from host %X', [FInAddr.S_addr]);
 
  StrPCopy ( reqvs, AnsiString (s) );
 
- FillChar (reply, sizeof(reply), 0);
-
-
+ FillChar ( reply, sizeof(reply), 0 );
  ping_sent := g_timer.GetTime;
-
-
  err := 0;
  fail := FALSE;
- pt.StartOne (2);
+ pt.StartOne (2);  // next ping
  SetLastError (0);
+
+
+
  res := IcmpSendEcho2 (h_icmp, 0, PingApcRoutine, self, FInAddr,
                                @reqvs, Length (s),
                                nil, @reply, sizeof(reply), ping_timeout);
+
  if res = 0 then
     err := GetLastError ();
- pt.StartOne (1);
+
  if ( err <> 0 ) and ( err <> 997 ) then fail := TRUE;
  ping_now := not fail;
- SleepEx (10, TRUE);
+ if ping_now then
+    pt.StartOne (1);
 
+ SleepEx (10, TRUE);
  if fail then
     ODS('~C0C[~T]. #WARN: IcmpSendEcho2 returns with error: ~C0F' + err2str (err) + '~C07');
 
-
 end;
 
-procedure TICMPHost.OnICMPReply(IoStatusBlock: Pointer);
+procedure TICMPHost.OnICMPReply (IoStatusBlock: Pointer);
 var
    elps: Double;
    res: DWORD;
@@ -847,7 +918,8 @@ begin
 
  sr := AnsiTrim2W ( PAnsiChar (@reply.data[4]) );
 
- if (res <> 0) and (elps < ping_timeout) and ( reply.hdr.Address.S_addr  = FInAddr.S_addr ) and ( Pos('Ping from host', sr) = 1 )  then
+ if (res <> 0) and (elps < ping_timeout) and
+    ( reply.hdr.Address.S_addr  = FInAddr.S_addr ) and ( Pos('Ping from host', sr) = 1 )  then
   begin
    if reply.hdr.RoundTripTime > 0 then
       elps := Min (elps, 1.0 * reply.hdr.RoundTripTime + 0.5 );
@@ -913,7 +985,9 @@ end;
 procedure TPingThread.WorkProc;
 begin
  inherited;
+ SleepEx(100, TRUE);
  if Terminated then exit;
+ if g_exiting >= 10 then StopThread;
 
  if Assigned (PingDest) and (PingDest.Count > 0) then
     PingDest.PingAll ();
@@ -996,20 +1070,29 @@ begin
 end;
 
 
+function TPingDestination.InProgress: Integer;
+var
+    i: Integer;
+begin
+ result := 0;
+ for i := 0 to Count - 1 do
+  if HostObjs [i].ping_now then
+     Inc (result);
+end;
+
 procedure TPingDestination.PingAll;
 var
    n: Integer;
 begin
- if (Count > 0) then
+ if (Count > 0) and (g_exiting <= 9) then
  try
-  SleepEx (100, TRUE);
   for n := 0 to Count - 1 do
      begin
-      HostObjs [n].DoPing ();
       if TWorkerThread (Owner).Terminated then exit;
+      HostObjs [n].DoPing ();
      end;
 
-  SleepEx (g_ping_timeout + 100, TRUE);
+  SleepEx (g_ping_timeout + 100, TRUE); // sleep for APC routing call
  finally
   //
  end;
