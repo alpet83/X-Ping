@@ -10,21 +10,25 @@ type
 
   TPingStat = class
   private
+     FLost: Integer;
    FEchoes: Integer;
   protected
    FDelays: array [0..255] of Double;
    FTimes: array [0..255] of TDateTime;
    FCount: Integer;
+
+
   public
    { vars }
 
    evts_reached: Integer;
+   first_reached: TDateTime;
    last_reached: TDateTime;
 
    { props }
    property     Count: Integer read FCount;
    property     Echoes: Integer read FEchoes;
-
+   
    { C & D }
    constructor  Create;
 
@@ -536,6 +540,7 @@ var
    dst: TPingDestination;
    hst: TICMPHost;
    pst: TPingStat;
+    ts: String;
      s: String;
 begin
  wc := imgResults.Canvas;
@@ -579,10 +584,6 @@ begin
     end;
 
    wc.Font.Size := 7;
-
-
-
-
    if dst.TryLock ('Dump') then
    try
     for n_host := 0 to dst.Count - 1 do
@@ -595,6 +596,7 @@ begin
       s := hst.Name;
 
 
+
       if pst.Count = 0 then
          stability := 0
       else
@@ -603,7 +605,8 @@ begin
       if (stability = 100) and (act_hosts.IndexOfName(s) < 0) then
          begin
           act_hosts.Add(s + '=' + FormatDateTime('dd.mm-hh:nn:ss', Now));
-          wprintf('[~T].~C0B #PING:~C07 host registered [%35s] ', [s]);
+          ts := FormatDateTime('dd.mm-hh:nn:ss', pst.first_reached);
+          wprintf('[~T].~C0B #PING:~C07 host registered [%35s], first ping [%s] ', [s, ts]);
          end;
 
       i := act_hosts.IndexOfName(s);
@@ -622,7 +625,7 @@ begin
       else
          wc.TextOut (x + 3, y, hst.Name);
 
-      if pst.Echoes < 100 then
+      if pst.Echoes < 1000 then
         begin
          wc.Brush.Style := bsSolid;
 
@@ -636,7 +639,7 @@ begin
          wc.TextOut(x + cell_w - 70, y, IntToStr(pst.Echoes));
         end
       else
-         wc.TextOut(x + cell_w - 70, y, '100+');
+         wc.TextOut(x + cell_w - 70, y, ftow(pst.Echoes / 1000.0, '%.1f') + 'K+');
 
       wc.Brush.Style := bsSolid;
 
@@ -927,13 +930,19 @@ begin
    PingStat.last_reached := g_timer.GetTime;
    Inc (PingStat.FEchoes);
 
+   Pingstat.FLost := 0;
+   if PingStat.first_reached = 0 then
+      PingStat.first_reached := PingStat.last_reached;
+
    if ( self = PingForm.sel_host ) then
        PingForm.sel_host_updated := TRUE;
   end
  else
   begin
    PingStat.Add ( -elps, ping_sent );
-   PingStat.FEchoes := 0;
+   Inc (Pingstat.FLost);
+   if (Pingstat.FLost >= 10) then
+       PingStat.FEchoes := 0;
   end;
 
 end;
@@ -1051,10 +1060,12 @@ begin
 
  cnt := 1 shl (32 - bits);
 
+ wprintf('[~T]. #DBG: subnet [%s] size [%d]', [addr, cnt]);
+
  for n := 0 to cnt - 1 do
  with ipf.S_un_b do
   begin
-   if (s_b4 > 0) and ( s_b4 < 250 ) then
+   if (s_b4 > 0) and ( s_b4 < 255 ) then
     begin
      hst := AddHost ( Format('%d.%d.%d.%d',  [s_b1, s_b2, s_b3, s_b4] ) );
      if hst <> nil then hst.sub_addr := IntToStr ( s_b4 );
