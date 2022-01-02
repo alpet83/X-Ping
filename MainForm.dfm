@@ -1,9 +1,11 @@
 object PingForm: TPingForm
   Left = 0
   Top = 0
+  VertScrollBar.Increment = 15
+  VertScrollBar.Style = ssFlat
   Caption = 'Xping v 0'
-  ClientHeight = 355
-  ClientWidth = 179
+  ClientHeight = 421
+  ClientWidth = 694
   Color = clSilver
   Font.Charset = DEFAULT_CHARSET
   Font.Color = clWindowText
@@ -11,36 +13,49 @@ object PingForm: TPingForm
   Font.Name = 'Tahoma'
   Font.Style = []
   OldCreateOrder = False
+  Visible = True
   OnCloseQuery = FormCloseQuery
   OnCreate = FormCreate
   OnDestroy = FormDestroy
   OnResize = FormResize
   DesignSize = (
-    179
-    355)
+    694
+    421)
   PixelsPerInch = 96
   TextHeight = 13
-  object imgResults: TImage
-    Left = 4
-    Top = 0
-    Width = 174
-    Height = 334
-    Anchors = [akLeft, akTop, akRight, akBottom]
-    AutoSize = True
-    PopupMenu = pmContext
-    OnDblClick = imgResultsDblClick
-    OnMouseDown = imgResultsMouseDown
-    ExplicitWidth = 1206
-    ExplicitHeight = 433
-  end
   object chxDrawStat: TCheckBox
     Left = 8
-    Top = 336
+    Top = 386
     Width = 97
     Height = 17
     Anchors = [akLeft, akBottom]
     Caption = 'Auto draw stat'
     TabOrder = 0
+  end
+  object sbInfo: TStatusBar
+    Left = 0
+    Top = 402
+    Width = 694
+    Height = 19
+    Panels = <
+      item
+        Text = 'App startup...'
+        Width = 300
+      end
+      item
+        Text = 'value = 0'
+        Width = 50
+      end>
+  end
+  object PageCtrl: TPageControl
+    Left = 0
+    Top = 0
+    Width = 694
+    Height = 380
+    Align = alCustom
+    Anchors = [akLeft, akTop, akRight, akBottom]
+    Style = tsFlatButtons
+    TabOrder = 2
   end
   object tmrUpdate: TTimer
     Interval = 500

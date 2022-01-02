@@ -1,9 +1,11 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <BorlandProject>
 	<Transactions>
-    <Transaction>1899.12.30 00:00:00.000.pas,P:\Trade\ping\Unit1.pas=P:\Trade\ping\MainForm.pas</Transaction>
-    <Transaction>1899.12.30 00:00:00.000.pas,P:\Trade\ping\Unit1.pas=P:\Trade\ping\StatChart.pas</Transaction>
-    <Transaction>1899.12.30 00:00:00.000.dfm,P:\Trade\ping\Unit1.dfm=P:\Trade\ping\StatChart.dfm</Transaction>
     <Transaction>1899.12.30 00:00:00.000.dfm,P:\Trade\ping\Unit1.dfm=P:\Trade\ping\MainForm.dfm</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.695,=P:\Projects\ping\Unit1.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.827,P:\Projects\ping\Unit1.pas=P:\Projects\ping\PingClasses.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.pas,P:\Trade\ping\Unit1.pas=P:\Trade\ping\StatChart.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.pas,P:\Trade\ping\Unit1.pas=P:\Trade\ping\MainForm.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.dfm,P:\Trade\ping\Unit1.dfm=P:\Trade\ping\StatChart.dfm</Transaction>
   </Transactions>
 </BorlandProject>

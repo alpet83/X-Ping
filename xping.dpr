@@ -16,10 +16,12 @@ uses
   SysUtils,
   SyncObjs,
   ShellAPi,
-  Forms, ModuleMgr,
+  Forms,
+  ModuleMgr,
   MainForm in 'MainForm.pas',
   ping,
-  StatChart in 'StatChart.pas' {ChartForm};
+  StatChart in 'StatChart.pas' {ChartForm},
+  PingClasses in 'PingClasses.pas';
 
 var
    shutdown: Boolean;
