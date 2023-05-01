@@ -4,7 +4,7 @@ interface
 
 uses
     Windows, Misc, WThreads, DateTimeTools, StrClasses, Math, SysUtils, Classes, Graphics,
-    Vcl.Controls, Vcl.StdCtrls, Vcl.ComCtrls, Vcl.ExtCtrls, Ping;
+    Vcl.Controls, Vcl.StdCtrls, Vcl.ComCtrls, Vcl.ExtCtrls, Vcl.Forms, Ping;
 
 
 type
@@ -140,14 +140,17 @@ type
 
   TPingRender = class(TImage)
   private
-
     FDest: TPingDestination;
     FRect: TRect;
-    FClientRect: TRect;
     FFontName: String;
     FFontSize: Integer;
+    function GetTabSheet: TTabSheet;
+    function GetScrollBox: TScrollBox;
   protected
-      wc: TCanvas;
+   FRowHeight: Integer;
+           wc: TCanvas;
+
+   procedure  AdjustImageSize; virtual;
   public
 
 
@@ -156,32 +159,35 @@ type
    property Rect: TRect read FRect;  // postrendered area
    property FontName: String read FFontName write FFontName;
    property FontSize: Integer read FFontSize write FFontSize;
+   property RowHeight: Integer read FRowHeight;
+   property TabSheet: TTabSheet read GetTabSheet;
+   property ScrollBox: TScrollBox read GetScrollBox;
 
 
    constructor  Create(AOwner: TComponent); override;
-
-
    procedure    DrawAll; virtual;
-
-
 
   end;
 
   TWideRender = class(TPingRender)
   private
-   max_col: Integer;
-     n_col: Integer;
-     n_row: Integer;
+    max_col: Integer;
+   num_rows: Integer;
+   num_cols: Integer;
+   curr_row: Integer;
+   curr_col: Integer;
+
 
      frame: TRect;
+
+  protected
+    procedure AdjustImageSize; override;
 
   public
 
   const
-      ROW_HEIGHT  = 15;
      SPACE_HEIGHT = 20;
         COL_WIDTH = 130;
-
 
    procedure    DrawAll; override;
    procedure    DrawHost(var x, y: Integer; hst: TICMPHost);
@@ -195,7 +201,7 @@ var
 
 
 implementation
-uses MainForm;
+uses MainForm, AnsiStrings;
 
 { TPingStat }
 
@@ -304,7 +310,7 @@ end;
 procedure PingApcRoutine(ApcContext, IoStatusBlock: Pointer; Reserved: DWORD); stdcall;
 var
    hst: TICMPHost;
-   cnt: Integer;
+
 begin
  // dst := ApcContext;
  // if (dst = nil) then exit;
@@ -365,7 +371,7 @@ begin
  // ODS('[~T]. #DBG: ping host ~C0A' + Name + '~C07');
  s := Format('Ping from host %X', [FInAddr.S_addr]);
 
- StrPCopy ( reqvs, AnsiString (s) );
+ AnsiStrings.StrPCopy ( reqvs, AnsiString (s) );
 
  FillChar ( reply, sizeof(reply), 0 );
  ping_sent := g_timer.GetTime;
@@ -526,7 +532,6 @@ var
    bits: Integer;
    cnt: Integer;
    ipf: TIPAddr;
-   ips: DWORD;
    hst: TICMPHost;
    n: Integer;
 begin
@@ -544,8 +549,6 @@ begin
  if bits < 24 then bits := 24; // большие подсети не поддерживаются
 
  TranslateStringToTInAddr (addr, ipf);
- ips := ipf.S_addr;
-
  cnt := 1 shl (32 - bits);
 
  wprintf('[~T]. #DBG: subnet [%s] size [%d]', [addr, cnt]);
@@ -573,6 +576,7 @@ procedure TPingDestination.InitRender(const scheme: String);
 
 var
     ts: TTabSheet;
+    sb: TScrollBox;
 
 begin
  ts := TTabSheet.Create(PingForm.PageCtrl);
@@ -583,16 +587,23 @@ begin
    ts.Caption := Caption
  else
    ts.Caption := Copy(Caption, 1, 17) + '...';
+
+ sb := TScrollBox.Create(ts);
+ sb.Align := alClient;
+ sb.AutoSize := True;
+ sb.Parent := ts;
+ sb.VertScrollBar.Visible := True;
+
  if scheme = 'wide' then
-   FRender := TWideRender.Create(ts);
+   FRender := TWideRender.Create(sb);
 
  Assert(Assigned(Render), 'Not created Render object for scheme ' + scheme);
  Render.Name := 'imgResults_' + IntToHex(DWORD(Render));
  Render.Left := 0;
  Render.Top := 0;
- Render.Width := ts.ClientWidth;
- Render.Height := ts.ClientHeight;
- Render.Parent := ts;
+ Render.Width := sb.ClientWidth;
+ Render.Height := sb.ClientHeight;
+ Render.Parent := sb;
  Render.FDest := self;
  Render.Show;
 end;
@@ -627,16 +638,24 @@ end;
 
 { TPingRender }
 
+procedure TPingRender.AdjustImageSize;
+begin
+ Picture.Bitmap.SetSize(ClientWidth, ClientHeight);
+end;
+
 constructor TPingRender.Create;
 begin
+ Assert(Assigned(AOwner), 'Trying create Render without owner');
  inherited Create(AOwner);
- Assert(Assigned(Owner), 'Render created without Owner');
+
+ Assert(Owner is TScrollBox, 'Not expected Owner with class ' + Owner.ClassName);
  Align := alClient;
  OnMouseDown := PingForm.imgResultsMouseDown;
  OnDblClick := PingForm.imgResultsDblClick;
  PopupMenu := PingForm.pmContext;
  FontName := 'Lucida Console';
  FontSize := 8;
+ FRowHeight := 15;
 end;
 
 
@@ -644,52 +663,84 @@ end;
 procedure TPingRender.DrawAll;
 begin
  wc := Canvas;
- Picture.Bitmap.SetSize(ClientWidth, ClientHeight);
+ AdjustImageSize;
+ // Width := ScrollBox.ClientWidth;
+ // Height := ScrollBox.ClientHeight;
+end;
+
+function TPingRender.GetScrollBox: TScrollBox;
+begin
+ result := Owner as TScrollBox;
+end;
+
+function TPingRender.GetTabSheet: TTabSheet;
+begin
+ result := ScrollBox.Owner as TTabSheet;
 end;
 
 { TWideRender }
 
+procedure TWideRender.AdjustImageSize;
+var
+   w, h, cx, vis: Integer;
+begin
+ Align := alNone;
+ w := ScrollBox.ClientWidth;
+ vis := Integer(ScrollBox.VertScrollBar.IsScrollBarVisible);
+ cx := w - vis * 5;
+ max_col := Trunc ( cx / (5 * COL_WIDTH) ) * 5; // rounded to 5 for decimal accuracy
+ max_col := max (max_col, 1);
+
+ num_rows := Dest.Count div max_col;      // count of full-filled rows
+ if max_col * num_rows < Dest.Count then
+      Inc(num_rows);
+
+
+ h := Max (Height, num_rows * RowHeight + 30); // possible oversize, including edges
+ SetAutoSize(False);
+ Width := cx;
+ Height := h;
+ Picture.Bitmap.SetSize(cx, h);
+
+ if ScrollBox.Height < h then
+  begin
+   ScrollBox.VertScrollBar.Visible := True;
+   ScrollBox.VertScrollBar.Range := h;
+  end
+ else
+   ScrollBox.VertScrollBar.Range := 0;
+end;
+
+
 procedure TWideRender.DrawAll;
+
+const
+   V_START = 5;
 
 var
 
-   w, h: Integer;
-   i, cx, x, y: Integer;
-
-
-   max_h: Integer;
-
-   n_dest: Integer;
-   n_host: Integer;
-   cnt_rows: Integer;
-
-
-   hst: TICMPHost;
+   w: Integer;
+   cx, x, y: Integer;
+     n_host: Integer;
+        hst: TICMPHost;
 
 
 begin
+ FRowHeight := self.FontSize + 5;
  inherited DrawAll;
 
- wc.Brush.Color := clSilver;
+ wc.Brush.Color := clSilver;  // TODO: load color from config
  wc.Brush.Style := bsSolid;
  wc.Pen.Color := clBlack;
  wc.Pen.Style := psSolid;
 
- w := ClientRect.Width;
- cx := w - 20;
- max_col := Trunc ( cx / (5 * COL_WIDTH) ) * 5; // rounded to 5 for decimal accuracy
- max_col := max (max_col, 1);
+ w := ClientWidth;
 
- SetRect (frame, 10, 10, w - 10, 0 );
+ SetRect (frame, 10, 10, w - 10, 0 ); // draw constraints rect initial
 
  Assert(Assigned(Dest), 'DrawAll: PingDest unassigned');
 
- cnt_rows := 0;
  // trying predict height
- n_row := Dest.Count div max_col;      // count of full-filled rows
- if max_col * n_row < Dest.Count then
-      Inc(n_row);
- Inc(cnt_rows, n_row);
 
 
  with PingForm do
@@ -699,39 +750,30 @@ begin
     // sbInfo.Panels[1].Text := Format('W:%d, H:%d ', [Width, Height]);
    end;
    // if dst.Count > i then     Inc(cnt_rows);
-
- h := cnt_rows * ROW_HEIGHT;
-
-
- max_h := Height;
-
-
- wc.Rectangle (0, 0, w, ClientHeight);
+ wc.Rectangle (0, 0, w, ClientHeight - 1); // background clean with gray
  x := frame.Left;
- y := frame.Top + 5;
+ y := frame.Top + V_START;
 
- n_row := 0;
- n_col := 0;
  wc.Font.Name := FontName;
  wc.Font.Size := FontSize;
+ curr_col := 0;
+ curr_row := 0;
+
 
  if Dest.TryLock ('Dump') then
  try
   for n_host := 0 to Dest.Count - 1 do
    begin
-    if y + ROW_HEIGHT > Height then break;
+    if y + RowHeight > ClientHeight then break;
 
     hst := Dest.HostObjs [n_host];
     if (hst = nil) then continue;
     DrawHost(x, y, hst);
    end; // for n_host
 
-  frame.Bottom := y + SPACE_HEIGHT;
-
+  frame.Bottom := y + RowHeight + V_START; // row and edge
   wc.Brush.Style := bsClear;
   wc.Rectangle (frame);
-  //  wc.TextOut (30, frame.Top - 5, Format('FT:%d,FB:%d', [Frame.Top, Frame.Bottom]));
-  // self.Paint;
  finally
   Dest.Unlock;
  end;
@@ -774,10 +816,9 @@ begin
       act_hosts.Delete(i);
       wprintf('[~T].~C0C #PING:~C07 host lost       [%35s]', [s]);
      end;
-
   SetRect (hst.rhit, x, y - 1, x + COL_WIDTH, y + 11);
 
-  r.Height := ROW_HEIGHT;
+  r.Height := self.RowHeight;
   wc.Brush.Style := bsClear;
 
   if hst.sub_addr <> '' then
@@ -856,17 +897,15 @@ begin
      wc.Brush.Color := clRed;
 
   wc.Rectangle ( x + COL_WIDTH - 15, y, x + COL_WIDTH - 05, y + 10 );
-
   x := x + COL_WIDTH;
-
   wc.MoveTo (x, y);
   wc.LineTo (x, y + 12);
-
-  Inc (n_col);
-  if (n_col >= max_col) then
+  Inc (curr_col);
+  if (curr_col >= max_col) then
    begin
-    n_col := 0;
-    Inc (y, ROW_HEIGHT);
+    curr_col := 0;
+    Inc (curr_row);
+    Inc (y, RowHeight);
     x := frame.Left;
    end;
 

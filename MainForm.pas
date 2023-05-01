@@ -116,6 +116,7 @@ begin
        pth.PingDest.Caption := s;
        pth.PingDest.NameServer := ns;
        pth.PingDest.InitRender('wide');
+       Assert (Assigned(pth.PingDest.Render));
       end;
    end;
  finally
@@ -288,11 +289,18 @@ begin
  act_hosts := TStrMap.Create(self);
  g_timer := TVirtualTimer.Create;
 
- self.Constraints.MaxHeight := Screen.Height - 50;
+ Constraints.MaxHeight := Screen.Height;
 
  PaintResults;
  LoadConfig;
- if dest_list.Count = 0 then AddDest('localhost');
+ if dest_list.Count = 0 then
+  with AddDest('localhost') do
+   begin
+    PingDest.Caption := 'default';
+    PingDest.InitRender('wide');
+    ODS('[~T]. #WARN: From configuration file not loaded any host!');
+   end;
+
  FormResize (nil);
  Caption := 'Xping v. ' + GetFileVersionStr('');
 end;
@@ -345,7 +353,6 @@ var
    n_dest: Integer;
    n_host: Integer;
 
-
 begin
  found := FALSE;
  hst := nil;
@@ -358,13 +365,14 @@ begin
 
    dst := pth.PingDest;
    if dst = nil then continue;
-   if dst.Render.Parent <> PageCtrl.ActivePage then continue;
-
+   if dst.Render.TabSheet <> PageCtrl.ActivePage then continue;
+   // dy := dst.Render.ScrollBox.VertScrollBar.Position;
 
    for n_host := 0 to dst.Count - 1 do
      begin
       hst := dst.HostObjs [n_host];
       if (hst = nil) then continue;
+
 
       with hst.rHit, mouse_pt do
       if ( x >= left ) and ( y >= top ) and
@@ -474,8 +482,10 @@ begin
   for n_dest := 0 to dest_list.Count - 1 do
    begin
      pth := TPingThread ( dest_list.Objects [n_dest] );
+     Assert ( Assigned (pth), 'Thread object not assiged for ' + dest_list[n_dest] );
      dst := pth.PingDest;
      if dst = nil then continue;
+     Assert ( Assigned(dst.Render), 'Render was not created for ' + dest_list[n_dest] );
      dst.Render.DrawAll;
    end;
 end;
